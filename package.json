@@ -1,0 +1,11 @@
+{
+  "name": "algomentor",
+  "version": "0.2.0",
+  "private": true,
+  "workspaces": ["apps/web"],
+  "scripts": {
+    "dev": "npm run dev --workspace=apps/web",
+    "build": "npm run build --workspace=apps/web",
+    "api": "cd apps/api && python -m uvicorn main:app --reload --port 8000"
+  }
+}

@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.egg-info/
+dist/
+build/
+
+# Env files
+.env
+.env.local
+.env.production
+apps/api/.env
+apps/web/.env.local
+
+# DB / vector store
+apps/api/algomentor.db
+apps/api/qdrant_db/
+backend/algomentor.db
+
+# Next.js
+apps/web/.next/
+apps/web/node_modules/
+node_modules/
+
+# macOS
+.DS_Store
+.idea/
+
+# Logs
+*.log

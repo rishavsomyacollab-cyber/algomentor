@@ -1,0 +1,7 @@
+.venv
+__pycache__
+*.pyc
+*.pyo
+.env
+algomentor.db
+qdrant_db/
