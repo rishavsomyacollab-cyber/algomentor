@@ -13,6 +13,7 @@ export default function SignupPage() {
   const [email, setEmail]       = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [showPw, setShowPw]     = useState(false);
   const [error, setError]       = useState("");
   const [loading, setLoading]   = useState(false);
 
@@ -90,18 +91,32 @@ export default function SignupPage() {
                    style={{ color: "var(--text-muted)" }}>
               Password
             </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Min 6 characters"
-              required
-              minLength={6}
-              className="w-full px-4 py-2.5 rounded-lg border text-sm outline-none transition-all"
-              style={{ background: "var(--bg-card2)", borderColor: "var(--border)", color: "var(--text)" }}
-              onFocus={(e) => { e.target.style.borderColor = "var(--primary)"; e.target.style.boxShadow = "0 0 0 3px rgba(99,102,241,.15)"; }}
-              onBlur={(e) => { e.target.style.borderColor = "var(--border)"; e.target.style.boxShadow = "none"; }}
-            />
+            <div style={{ position: "relative" }}>
+              <input
+                type={showPw ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Min 6 characters"
+                required
+                minLength={6}
+                className="w-full px-4 py-2.5 rounded-lg border text-sm outline-none transition-all"
+                style={{ background: "var(--bg-card2)", borderColor: "var(--border)", color: "var(--text)", paddingRight: 44 }}
+                onFocus={(e) => { e.target.style.borderColor = "var(--primary)"; e.target.style.boxShadow = "0 0 0 3px rgba(99,102,241,.15)"; }}
+                onBlur={(e) => { e.target.style.borderColor = "var(--border)"; e.target.style.boxShadow = "none"; }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPw(v => !v)}
+                tabIndex={-1}
+                style={{
+                  position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)",
+                  background: "none", border: "none", cursor: "pointer",
+                  fontSize: 13, color: "var(--text-muted)",
+                }}
+              >
+                {showPw ? "Hide" : "Show"}
+              </button>
+            </div>
           </div>
 
           {error && (
