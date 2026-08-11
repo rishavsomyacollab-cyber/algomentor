@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/lib/api";
+import AuthHeader from "@/components/AuthHeader";
 
 type Step = "form" | "done" | "invalid";
 
@@ -67,8 +68,7 @@ function ResetPasswordForm() {
       </p>
       <button
         onClick={() => router.push("/login")}
-        className="w-full py-2.5 rounded-lg text-sm font-semibold text-white"
-        style={{ background: "var(--primary)" }}
+        className="btn btn-primary w-full py-2.5 text-sm font-semibold"
       >
         Go to sign in
       </button>
@@ -105,8 +105,8 @@ function ResetPasswordForm() {
                 color: "var(--text)",
                 paddingRight: 44,
               }}
-              onFocus={e => (e.target.style.borderColor = "var(--primary)")}
-              onBlur={e  => (e.target.style.borderColor = "var(--border)")}
+              onFocus={e => { e.target.style.borderColor = "var(--primary)"; e.target.style.boxShadow = "0 0 0 3px rgba(99,102,241,.15)"; }}
+              onBlur={e  => { e.target.style.borderColor = "var(--border)"; e.target.style.boxShadow = "none"; }}
             />
             <button
               type="button"
@@ -159,9 +159,11 @@ function ResetPasswordForm() {
               borderColor: confirm && confirm !== password ? "#ef4444" : "var(--border)",
               color: "var(--text)",
             }}
-            onFocus={e => (e.target.style.borderColor = "var(--primary)")}
-            onBlur={e  => (e.target.style.borderColor =
-              confirm && confirm !== password ? "#ef4444" : "var(--border)")}
+            onFocus={e => { e.target.style.borderColor = "var(--primary)"; e.target.style.boxShadow = "0 0 0 3px rgba(99,102,241,.15)"; }}
+            onBlur={e  => {
+              e.target.style.borderColor = confirm && confirm !== password ? "#ef4444" : "var(--border)";
+              e.target.style.boxShadow = "none";
+            }}
           />
           {confirm && confirm !== password && (
             <p className="text-xs mt-1" style={{ color: "#ef4444" }}>Passwords do not match</p>
@@ -178,8 +180,8 @@ function ResetPasswordForm() {
         <button
           type="submit"
           disabled={loading || (!!confirm && confirm !== password)}
-          className="w-full py-2.5 rounded-lg text-sm font-semibold text-white transition-opacity"
-          style={{ background: "var(--primary)", opacity: loading ? 0.7 : 1 }}
+          className="btn btn-primary w-full py-2.5 text-sm font-semibold"
+          style={{ opacity: loading ? 0.7 : 1 }}
         >
           {loading ? "Updating…" : "Update password"}
         </button>
@@ -191,17 +193,15 @@ function ResetPasswordForm() {
 export default function ResetPasswordPage() {
   return (
     <div className="w-full max-w-md">
-      {/* Logo */}
-      <div className="text-center mb-8">
-        <div className="inline-flex items-center gap-2 mb-3">
-          <div className="w-9 h-9 rounded-lg flex items-center justify-center text-white font-bold text-lg"
-               style={{ background: "var(--primary)" }}>A</div>
-          <span className="text-xl font-bold" style={{ color: "var(--text)" }}>AlgoMentor</span>
-        </div>
-      </div>
+      <AuthHeader subtitle="Choose a new password" />
 
-      <div className="rounded-2xl border p-8"
-           style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}>
+      <div className="rounded-2xl border p-8 animate-slide-up"
+           style={{
+             background: "linear-gradient(180deg, rgba(17,24,39,.9), rgba(13,17,23,.9))",
+             backdropFilter: "blur(12px)",
+             borderColor: "var(--border)",
+             boxShadow: "var(--shadow-card)",
+           }}>
         <Suspense fallback={<div className="loading"><div className="spinner" /></div>}>
           <ResetPasswordForm />
         </Suspense>

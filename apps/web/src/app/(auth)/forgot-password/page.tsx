@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
+import AuthHeader from "@/components/AuthHeader";
 
 type Step = "form" | "sent";
 
@@ -30,20 +31,15 @@ export default function ForgotPasswordPage() {
 
   return (
     <div className="w-full max-w-md">
-      {/* Logo */}
-      <div className="text-center mb-8">
-        <div className="inline-flex items-center gap-2 mb-3">
-          <div className="w-9 h-9 rounded-lg flex items-center justify-center text-white font-bold text-lg"
-               style={{ background: "var(--primary)" }}>A</div>
-          <span className="text-xl font-bold" style={{ color: "var(--text)" }}>AlgoMentor</span>
-        </div>
-        <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-          Reset your password
-        </p>
-      </div>
+      <AuthHeader subtitle="Reset your password" />
 
-      <div className="rounded-2xl border p-8"
-           style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}>
+      <div className="rounded-2xl border p-8 animate-slide-up"
+           style={{
+             background: "linear-gradient(180deg, rgba(17,24,39,.9), rgba(13,17,23,.9))",
+             backdropFilter: "blur(12px)",
+             borderColor: "var(--border)",
+             boxShadow: "var(--shadow-card)",
+           }}>
 
         {step === "form" ? (
           <>
@@ -66,14 +62,14 @@ export default function ForgotPasswordPage() {
                   onChange={e => setEmail(e.target.value)}
                   placeholder="you@example.com"
                   required
-                  className="w-full px-4 py-2.5 rounded-lg border text-sm outline-none transition-colors"
+                  className="w-full px-4 py-2.5 rounded-lg border text-sm outline-none transition-all"
                   style={{
                     background: "var(--bg-card2)",
                     borderColor: "var(--border)",
                     color: "var(--text)",
                   }}
-                  onFocus={e => (e.target.style.borderColor = "var(--primary)")}
-                  onBlur={e  => (e.target.style.borderColor = "var(--border)")}
+                  onFocus={e => { e.target.style.borderColor = "var(--primary)"; e.target.style.boxShadow = "0 0 0 3px rgba(99,102,241,.15)"; }}
+                  onBlur={e  => { e.target.style.borderColor = "var(--border)"; e.target.style.boxShadow = "none"; }}
                 />
               </div>
 
@@ -87,8 +83,8 @@ export default function ForgotPasswordPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-2.5 rounded-lg text-sm font-semibold text-white transition-opacity"
-                style={{ background: "var(--primary)", opacity: loading ? 0.7 : 1 }}
+                className="btn btn-primary w-full py-2.5 text-sm font-semibold"
+                style={{ opacity: loading ? 0.7 : 1 }}
               >
                 {loading ? "Sending…" : "Send reset link"}
               </button>
