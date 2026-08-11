@@ -10,16 +10,19 @@ OLLAMA_BASE = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:3b")
 QUIZ_MODEL = os.getenv("QUIZ_MODEL", "llama3.2:3b")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
-CLAUDE_FAST_MODEL  = "claude-haiku-4-5-20251001"   # quiz, hints, evaluate, chat
-CLAUDE_SMART_MODEL = "claude-sonnet-4-6"            # explain, pseudocode, complexity
-# Legacy alias kept for call sites that used the old name
+GROQ_API_KEY      = os.getenv("GROQ_API_KEY")
+CLAUDE_FAST_MODEL  = "claude-haiku-4-5-20251001"
+CLAUDE_SMART_MODEL = "claude-sonnet-4-6"
 CLAUDE_QUIZ_MODEL  = CLAUDE_FAST_MODEL
+GROQ_SMART_MODEL   = "llama-3.3-70b-versatile"
+GROQ_FAST_MODEL    = "llama-3.1-8b-instant"
 
 
 def _claude_json(system: str, user_msg: str, max_tokens: int = 1500, model: str = None) -> dict:
-    """Call Claude API, return parsed JSON. Falls back to Ollama if no API key."""
+    """Call Claude API → Groq → Ollama fallback chain."""
     if not ANTHROPIC_API_KEY:
-        return _ollama_json(system, user_msg, max_tokens)
+        result = _groq_json(system, user_msg, max_tokens)
+        return result if result else _ollama_json(system, user_msg, max_tokens)
     try:
         import anthropic
         client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
@@ -34,16 +37,18 @@ def _claude_json(system: str, user_msg: str, max_tokens: int = 1500, model: str 
         return extract_json(text) if text else {}
     except Exception as e:
         if "credit balance" in str(e):
-            print(f"[claude] no API credits — falling back to Ollama/{MODEL}")
+            print(f"[claude] no API credits — trying Groq")
         else:
-            print(f"[claude] error, falling back to ollama: {e}")
-        return _ollama_json(system, user_msg, max_tokens)
+            print(f"[claude] error, trying Groq: {e}")
+        result = _groq_json(system, user_msg, max_tokens)
+        return result if result else _ollama_json(system, user_msg, max_tokens)
 
 
 def _claude_text(system: str, user_msg: str, max_tokens: int = 800) -> str:
-    """Call Claude API, return plain text. Falls back to Ollama if no API key."""
+    """Call Claude API → Groq → Ollama fallback chain, return plain text."""
     if not ANTHROPIC_API_KEY:
-        return _ollama_text(system, user_msg, max_tokens)
+        result = _groq_text(system, user_msg, max_tokens)
+        return result if result else _ollama_text(system, user_msg, max_tokens)
     try:
         import anthropic
         client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
@@ -55,14 +60,19 @@ def _claude_text(system: str, user_msg: str, max_tokens: int = 800) -> str:
         )
         return msg.content[0].text if msg.content else ""
     except Exception as e:
-        print(f"[claude] text error, falling back to ollama: {e}")
-        return _ollama_text(system, user_msg, max_tokens)
+        print(f"[claude] text error, trying Groq: {e}")
+        result = _groq_text(system, user_msg, max_tokens)
+        return result if result else _ollama_text(system, user_msg, max_tokens)
 
 
 def _claude_stream(system: str, user_msg: str, max_tokens: int = 1200):
-    """Stream tokens from Claude API. Falls back to Ollama if no API key."""
+    """Stream tokens: Claude API → Groq → Ollama fallback chain."""
     if not ANTHROPIC_API_KEY:
-        yield from _ollama_stream(system, user_msg, max_tokens)
+        tokens = list(_groq_stream(system, user_msg, max_tokens))
+        if tokens:
+            yield from tokens
+        else:
+            yield from _ollama_stream(system, user_msg, max_tokens)
         return
     try:
         import anthropic
@@ -76,8 +86,12 @@ def _claude_stream(system: str, user_msg: str, max_tokens: int = 1200):
             for text in stream.text_stream:
                 yield text
     except Exception as e:
-        print(f"[claude] stream error, falling back to ollama: {e}")
-        yield from _ollama_stream(system, user_msg, max_tokens)
+        print(f"[claude] stream error, trying Groq: {e}")
+        tokens = list(_groq_stream(system, user_msg, max_tokens))
+        if tokens:
+            yield from tokens
+        else:
+            yield from _ollama_stream(system, user_msg, max_tokens)
 
 
 # ── Cache helpers ────────────────────────────────────────────────────────────
@@ -90,6 +104,87 @@ def _cache_get(fn: str, topic_id: str):
 def _cache_set(fn: str, topic_id: str, value: dict):
     import database
     database.cache_set(f"{fn}:{topic_id}", value)
+
+
+# ── Groq helpers ─────────────────────────────────────────────────────────────
+
+def _groq_json(system: str, user_msg: str, max_tokens: int = 1500, model: str = None) -> dict:
+    """Call Groq API, return parsed JSON. Returns {} on failure."""
+    if not GROQ_API_KEY:
+        return {}
+    try:
+        r = httpx.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
+            json={
+                "model": model or GROQ_SMART_MODEL,
+                "messages": [{"role": "system", "content": system}, {"role": "user", "content": user_msg}],
+                "max_tokens": max_tokens,
+                "temperature": 0.1,
+                "response_format": {"type": "json_object"},
+            },
+            timeout=60,
+        )
+        r.raise_for_status()
+        text = r.json()["choices"][0]["message"]["content"]
+        return extract_json(text) if text else {}
+    except Exception as e:
+        print(f"[groq] error: {e}")
+        return {}
+
+
+def _groq_text(system: str, user_msg: str, max_tokens: int = 800, model: str = None) -> str:
+    """Call Groq API, return plain text."""
+    if not GROQ_API_KEY:
+        return ""
+    try:
+        r = httpx.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
+            json={
+                "model": model or GROQ_FAST_MODEL,
+                "messages": [{"role": "system", "content": system}, {"role": "user", "content": user_msg}],
+                "max_tokens": max_tokens,
+                "temperature": 0.3,
+            },
+            timeout=60,
+        )
+        r.raise_for_status()
+        return r.json()["choices"][0]["message"]["content"]
+    except Exception as e:
+        print(f"[groq] text error: {e}")
+        return ""
+
+
+def _groq_stream(system: str, user_msg: str, max_tokens: int = 1200):
+    """Stream tokens from Groq API."""
+    if not GROQ_API_KEY:
+        return
+    try:
+        with httpx.stream(
+            "POST",
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
+            json={
+                "model": GROQ_FAST_MODEL,
+                "messages": [{"role": "system", "content": system}, {"role": "user", "content": user_msg}],
+                "max_tokens": max_tokens,
+                "temperature": 0.3,
+                "stream": True,
+            },
+            timeout=60,
+        ) as resp:
+            for line in resp.iter_lines():
+                if line.startswith("data: ") and line != "data: [DONE]":
+                    try:
+                        chunk = json.loads(line[6:])
+                        token = chunk["choices"][0]["delta"].get("content", "")
+                        if token:
+                            yield token
+                    except Exception:
+                        pass
+    except Exception as e:
+        print(f"[groq] stream error: {e}")
 
 
 # ── Ollama helpers ────────────────────────────────────────────────────────────

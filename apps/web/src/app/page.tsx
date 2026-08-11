@@ -21,11 +21,6 @@ export default function Home() {
   // On mount try to restore session from refresh token cookie
   useEffect(() => { hydrate(); }, [hydrate]);
 
-  // Redirect to login if not authenticated after hydration
-  useEffect(() => {
-    if (!isLoading && !isAuthenticated) router.replace("/login");
-  }, [isLoading, isAuthenticated, router]);
-
   // Restore active topic on page refresh (or deep-link from dashboard)
   useEffect(() => {
     const deepLink = sessionStorage.getItem("openTopic");
@@ -48,6 +43,11 @@ export default function Home() {
       sessionStorage.removeItem("currentTopic");
     }
   }, [selectedTopic]);
+
+  // Redirect to login if not authenticated after hydration
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) router.replace("/login");
+  }, [isLoading, isAuthenticated, router]);
 
   // Show nothing while checking session
   if (isLoading || !isAuthenticated) return null;

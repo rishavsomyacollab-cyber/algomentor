@@ -14,11 +14,13 @@ import database
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-SECRET_KEY = os.getenv("JWT_SECRET", "algomentor-dev-secret-change-in-prod-32chars!")
-ALGORITHM  = "HS256"
+SECRET_KEY    = os.getenv("JWT_SECRET", "algomentor-dev-secret-change-in-prod-32chars!")
+ALGORITHM     = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES  = 15
 REFRESH_TOKEN_EXPIRE_DAYS    = 7
 REFRESH_COOKIE_NAME          = "algomentor_refresh"
+RESEND_API_KEY = os.getenv("RESEND_API_KEY")
+FRONTEND_URL   = os.getenv("FRONTEND_URL", "https://algomentor-app.vercel.app")
 
 bearer = HTTPBearer(auto_error=False)
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -266,26 +268,61 @@ class ResetPasswordRequest(BaseModel):
         return v
 
 
+def _send_reset_email(to_email: str, reset_url: str) -> None:
+    """Send password reset email via Resend. Logs URL if no API key configured."""
+    if not RESEND_API_KEY:
+        print(f"[email] No RESEND_API_KEY set. Reset URL: {reset_url}")
+        return
+    try:
+        import httpx
+        resp = httpx.post(
+            "https://api.resend.com/emails",
+            headers={"Authorization": f"Bearer {RESEND_API_KEY}"},
+            json={
+                "from": "AlgoMentor <onboarding@resend.dev>",
+                "to": [to_email],
+                "subject": "Reset your AlgoMentor password",
+                "html": f"""
+                <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px">
+                  <h2 style="color:#6366f1">Reset your password</h2>
+                  <p>Click the button below to set a new password. This link expires in 1 hour.</p>
+                  <a href="{reset_url}"
+                     style="display:inline-block;background:#6366f1;color:#fff;
+                            padding:12px 24px;border-radius:8px;text-decoration:none;
+                            font-weight:600;margin:16px 0">
+                    Reset Password
+                  </a>
+                  <p style="color:#888;font-size:13px">
+                    If you didn't request this, you can safely ignore this email.
+                  </p>
+                </div>
+                """,
+            },
+            timeout=10,
+        )
+        if resp.status_code >= 400:
+            print(f"[email] Resend error {resp.status_code}: {resp.text}")
+        else:
+            print(f"[email] Sent reset email to {to_email}")
+    except Exception as e:
+        print(f"[email] Failed to send reset email: {e}")
+
+
 @router.post("/forgot-password")
 def forgot_password(req: ForgotPasswordRequest):
     user = database.get_user_by_email(req.email)
-    # Always return the same message to avoid email enumeration
     generic = {"message": "If that email is registered, a reset link has been sent."}
     if not user:
         return generic
 
-    # Generate a secure random token
-    raw_token = str(uuid.uuid4()) + str(uuid.uuid4())   # 72 hex chars
+    raw_token = str(uuid.uuid4()) + str(uuid.uuid4())
     token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
     expire = datetime.now(timezone.utc) + timedelta(minutes=RESET_TOKEN_EXPIRE_MINUTES)
     database.create_reset_token(user["id"], token_hash, expire.strftime("%Y-%m-%d %H:%M:%S"))
 
-    # In production this would be emailed. For dev, return the URL directly.
-    reset_url = f"http://localhost:3001/reset-password?token={raw_token}"
-    return {
-        **generic,
-        "dev_reset_url": reset_url,   # remove in production
-    }
+    reset_url = f"{FRONTEND_URL}/reset-password?token={raw_token}"
+    _send_reset_email(user["email"], reset_url)
+    return generic
 
 
 @router.post("/reset-password")
