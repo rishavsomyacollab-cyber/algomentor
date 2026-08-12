@@ -168,6 +168,7 @@ def init_db():
                 created_at  TIMESTAMPTZ DEFAULT NOW()
             )
         """)
+        _run(conn, "ALTER TABLE topics ADD COLUMN IF NOT EXISTS companies TEXT")
         _run(conn, """
             CREATE TABLE IF NOT EXISTS progress (
                 topic_id       TEXT PRIMARY KEY,
@@ -370,6 +371,8 @@ def get_all_topics(user_id: str = None):
             t["progress"] = prog_map.get(
                 t["id"], {"completed": 0, "quiz_best_score": 0, "attempts": 0}
             )
+            t["tags"] = [s for s in (t.get("tags") or "").split(",") if s]
+            t["companies"] = [s for s in (t.get("companies") or "").split(",") if s]
         return topics
 
 

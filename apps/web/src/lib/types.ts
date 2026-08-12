@@ -13,6 +13,8 @@ export interface Topic {
   category: string;
   difficulty: "beginner" | "intermediate" | "advanced";
   progress?: TopicProgress;
+  tags?: string[];
+  companies?: string[];
 }
 
 export interface ProgressMap {
