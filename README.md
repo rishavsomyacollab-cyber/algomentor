@@ -17,6 +17,7 @@ A DSA (Data Structures & Algorithms) learning platform powered by a local LLM. U
 - [Content Pipeline](#content-pipeline)
 - [API Endpoints](#api-endpoints)
 - [Getting Started](#getting-started)
+- [Deployment (Production)](#deployment-production)
 - [Environment Variables](#environment-variables)
 
 ---
@@ -33,9 +34,11 @@ A DSA (Data Structures & Algorithms) learning platform powered by a local LLM. U
 - **Learning roadmap** — prerequisite graph powered by Neo4j (shortest path between topics)
 - **Personalized recommendations** — 6-signal hybrid engine (Neo4j + Qdrant + user activity)
 - **RAG-enriched explanations** — each explanation uses relevant chunks from previously explained topics
-- **JWT auth** with refresh token rotation
+- **JWT auth** with refresh token rotation, password reset via email (Resend)
 - **GFG crawler** — fetches and stores GeeksForGeeks articles for each topic
 - **User dashboard** — progress tracking, activity heatmap, bookmarks
+- **Personalized Journey panel** — always-visible "what to learn next" powered by the 6-signal recommendation engine
+- **Filterable topic browser** — flat, LeetCode-style list with status/difficulty/category/tag/company filters (company tags are AI-inferred, not verified interview data)
 
 ---
 
@@ -46,11 +49,12 @@ A DSA (Data Structures & Algorithms) learning platform powered by a local LLM. U
 | Frontend | Next.js 14, TypeScript, Tailwind CSS, Zustand |
 | Backend | FastAPI (Python), uvicorn |
 | Structured DB | PostgreSQL 16 (psycopg2, connection pool) |
-| Graph DB | Neo4j (Cypher, PREREQUISITE/RELATED edges) |
-| Vector DB | Qdrant (local file, cosine similarity, 768-dim) |
-| LLM | Ollama — `qwen2.5:3b` (chat/explain), `nomic-embed-text` (embeddings) |
+| Graph DB | Neo4j (Cypher, PREREQUISITE/RELATED edges) — optional, degrades gracefully if unavailable |
+| Vector DB | Qdrant (local file, cosine similarity, 768-dim) — optional, degrades gracefully if unavailable |
+| LLM | Groq (`llama-3.1-8b-instant` / `llama-3.3-70b-versatile`) primary, with Claude API and local Ollama (`qwen2.5:3b`) as fallbacks — see `claude_service.py` |
 | Crawler | httpx + BeautifulSoup (GeeksForGeeks) |
-| Auth | JWT (access token 15min + refresh token rotation) |
+| Auth | JWT (access token 15min + refresh token rotation), password reset via Resend |
+| Hosting | Render (backend, Docker), Vercel (frontend), Neon (Postgres) — all free tier |
 
 ---
 
@@ -69,6 +73,7 @@ algomentor/
 │   │   ├── recommendation_engine.py# Hybrid 6-signal recommendation engine
 │   │   ├── crawler.py              # GFG crawler (httpx + BeautifulSoup)
 │   │   ├── pipeline.py             # Content generation pipeline
+│   │   ├── backfill_tags_companies.py # One-time: AI-generate topic tags + company labels via Groq
 │   │   ├── agents/
 │   │   │   ├── tutor_agent.py      # Explanation + pseudocode + complexity
 │   │   │   ├── quiz_agent.py       # Quiz generation, evaluation, hints
@@ -84,10 +89,11 @@ algomentor/
 │           │   ├── dashboard/page.tsx      # User dashboard
 │           │   └── onboarding/page.tsx     # Onboarding flow
 │           ├── components/
-│           │   ├── TopicMap.tsx            # Topic grid + search bar
+│           │   ├── TopicMap.tsx            # Search bar + Journey panel + topic list
+│           │   ├── JourneyPanel.tsx        # Always-visible personalized "what's next"
+│           │   ├── TopicList.tsx           # Flat, filterable/sortable topic browser
 │           │   ├── TopicView.tsx           # Tab container (Learn/Code/Quiz/Animate)
 │           │   ├── TopicGraph.tsx          # React Flow — prerequisite graph
-│           │   ├── RecommendationStrip.tsx # "What to learn next"
 │           │   ├── ChatBot.tsx             # Floating AI tutor chat
 │           │   ├── AnimationPanel.tsx      # Step-by-step visualiser
 │           │   ├── QuizPanel.tsx           # MCQ quiz with hints
@@ -95,7 +101,8 @@ algomentor/
 │           │   └── ComplexityPanel.tsx     # Complexity table
 │           ├── lib/
 │           │   ├── api.ts                  # All API calls — single source of truth
-│           │   └── types.ts                # Shared TypeScript interfaces
+│           │   ├── types.ts                # Shared TypeScript interfaces
+│           │   └── topicMeta.ts            # Shared category/icon/difficulty-color maps
 │           └── store/
 │               ├── useTopicStore.ts        # Selected topic, topics list
 │               ├── useAuthStore.ts         # User, access token, login/logout
@@ -145,7 +152,9 @@ FastAPI Backend (port 8000)   ← main.py orchestrates everything
 
 ```
 users               — id (UUID), email, username, password_hash, is_active
-topics              — id (TEXT), name, category, difficulty, parent_id, depth, slug
+topics              — id (TEXT), name, category, difficulty, parent_id, depth, slug,
+                      tags, companies (both AI-generated via backfill_tags_companies.py,
+                      companies is a heuristic inference, not verified interview data)
 topic_content       — topic_id PK, learn_content, complexity_json, animation_json,
                       code_python, code_java, pseudocode, quiz_json
 user_progress       — (user_id, topic_id) PK, completed, quiz_best_score, time_spent_sec
@@ -240,6 +249,8 @@ SQL finds **what you spelled**. Qdrant finds **what you meant**.
 All signals add to a score dict `{ topic_id: total_points }`. Final result is `sorted(scores, reverse=True)[:limit]`.
 
 **Cold start** (< 3 data points): returns beginner topics sorted by difficulty.
+
+This feed powers the always-visible **Journey panel** (`JourneyPanel.tsx`) on the main page — a "Next Up" card plus a short "Then:" chain, rather than a collapsed strip. The flat topic browser below it (`TopicList.tsx`) is a separate, independent view: all topics client-side filtered by status/difficulty/category/tags/company and sorted alphabetically by default.
 
 ---
 
@@ -440,6 +451,22 @@ curl http://localhost:8000/api/admin/status
 
 ---
 
+## Deployment (Production)
+
+The live deployment does **not** use `docker-compose.prod.yml` — that self-hosted nginx/VPS setup exists in the repo but has never actually been deployed. The real production stack is three free-tier services wired together directly:
+
+| Service | Role | Notes |
+|---------|------|-------|
+| [Render](https://render.com) | Backend (`apps/api`, Docker) | Free web service; sleeps after 15 min idle (~30-60s cold start on wake) |
+| [Vercel](https://vercel.com) | Frontend (`apps/web`) | **Not git-linked** — deploy manually with `cd apps/web && vercel deploy --prod` after pushing to GitHub |
+| [Neon](https://neon.tech) | PostgreSQL | Free tier; compute scales to zero after 5 min idle |
+
+Neo4j and Qdrant are **not** deployed anywhere in production — `graph_store.py` and `vector_store.py` both fail open (see `main.py`'s background init threads), so topic-graph and semantic-search features degrade gracefully instead of crashing the app. The Journey panel and recommendations still work off Postgres-only signals (progress, quiz scores, category affinity).
+
+Required Render environment variables: `DATABASE_URL` (Neon connection string), `JWT_SECRET`, `GROQ_API_KEY`. Optional: `RESEND_API_KEY` (password reset emails), `ANTHROPIC_API_KEY` (upgrades the LLM fallback chain from Groq-only to Claude-first).
+
+Required Vercel environment variable: `API_URL` (the Render backend's public URL) — consumed by the rewrite in `apps/web/next.config.mjs` that proxies `/api/*` to the backend.
+
 ## Environment Variables
 
 `apps/api/.env`:
@@ -453,6 +480,9 @@ OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=qwen2.5:3b
 EMBED_MODEL=nomic-embed-text
 JWT_SECRET=your-secret-key-here
+GROQ_API_KEY=your-groq-key-here
+ANTHROPIC_API_KEY=your-anthropic-key-here
+RESEND_API_KEY=your-resend-key-here
 ```
 
 ---
@@ -496,3 +526,5 @@ Neo4j and Qdrant are both **populated from PostgreSQL** — Postgres is always t
 | 9 | Hybrid recommendation engine | ✅ Done |
 | 10 | React Flow graph visualisation | 🔲 In Progress |
 | 11 | User dashboard (progress, heatmap) | 🔲 In Progress |
+| 12 | Production deployment (Render + Vercel + Neon) | ✅ Done |
+| 13 | Always-visible Journey panel + filterable topic browser | ✅ Done |
